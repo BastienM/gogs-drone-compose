@@ -1,0 +1,68 @@
+version: '2'
+
+services:
+
+  git-server:
+    image: gogs/gogs
+    container_name: gogs
+    networks:
+      - git-tier
+      - web-tier
+    ports:
+      - "3000:3000"
+      - "3022:22"
+    volumes:
+      - "$PWD/gogs-server_data:/data"
+
+  git-database:
+    image: postgres:9.6
+    container_name: gogs-database
+    networks:
+      - git-tier
+    environment:
+      - POSTGRES_USER=gogs
+      - POSTGRES_PASSWORD=gogs
+    volumes:
+      - "$PWD/gogs-database_data:/var/lib/postgresql/data"
+
+  ci-server:
+    image: drone/drone:0.4
+    container_name: drone
+    networks:
+      - ci-tier
+      - web-tier
+    ports:
+      - "8000:8000"
+    environment:
+      - DRONE_SECRET=gogsdronecompose
+      - REMOTE_DRIVER=gogs
+      - REMOTE_CONFIG=http://gogs:3000?open=false
+      - DATABASE_DRIVER=postgres
+      - DATABASE_CONFIG=postgres://drone:drone@drone-database:5432/postgres?sslmode=disable
+      - DEBUG=true
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "$PWD/drone-server_data:/var/lib/drone"
+
+  ci-database:
+    image: postgres:9.1
+    container_name: drone-database
+    networks:
+      - ci-tier
+    environment:
+      - POSTGRES_USER=drone
+      - POSTGRES_PASSWORD=drone
+    volumes:
+      - "$PWD/drone-database_data:/var/lib/postgresql/data"
+
+
+networks:
+
+  git-tier:
+    driver: bridge
+
+  ci-tier:
+    driver: bridge
+
+  web-tier:
+    driver: bridge
