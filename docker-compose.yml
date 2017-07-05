@@ -1,68 +1,87 @@
 version: '2'
-
 services:
-
-  git-server:
-    image: gogs/gogs
-    container_name: gogs
+  proxy:
+    image: traefik
+    command: --web --docker --logLevel=DEBUG
     networks:
-      - git-tier
       - web-tier
     ports:
-      - "3000:3000"
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /dev/null:/traefik.toml
+
+  gogs:
+    image: gogs/gogs:0.11.19
+    container_name: gogs
+    networks:
+      - db-tier
+      - web-tier
+      - ci-tier
+    ports:
       - "3022:22"
     volumes:
-      - "$PWD/gogs-server_data:/data"
+      - /data"
+    labels:
+      - "traefik.backend=gogs"
+      - "traefik.protocol=http"
+      - "traefik.frontend.rule=Host:gogs.internal.cloud"
+      - "traefik.port=3000"
+      - "traefik.docker.network=web-tier"
 
-  git-database:
-    image: postgres:9.6
+  gogs-db:
+    image: postgres:9.1
     container_name: gogs-database
     networks:
-      - git-tier
+      - db-tier
     environment:
       - POSTGRES_USER=gogs
       - POSTGRES_PASSWORD=gogs
     volumes:
-      - "$PWD/gogs-database_data:/var/lib/postgresql/data"
+      - /var/lib/postgresql/data
+    labels:
+      - "traefik.enable=false"
 
-  ci-server:
-    image: drone/drone:0.4
+  drone-server:
+    image: drone/drone:0.7
     container_name: drone
     networks:
-      - ci-tier
       - web-tier
-    ports:
-      - "8000:8000"
+      - ci-tier
     environment:
       - DRONE_SECRET=gogsdronecompose
-      - REMOTE_DRIVER=gogs
-      - REMOTE_CONFIG=http://gogs:3000?open=false
-      - DATABASE_DRIVER=postgres
-      - DATABASE_CONFIG=postgres://drone:drone@drone-database:5432/postgres?sslmode=disable
+      - DRONE_OPEN=true
+      - DRONE_HOST=http://drone.internal.cloud
+      - DRONE_GOGS=true
+      - DRONE_GOGS_URL=http://gogs
       - DEBUG=true
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-      - "$PWD/drone-server_data:/var/lib/drone"
-
-  ci-database:
-    image: postgres:9.1
-    container_name: drone-database
+      - /var/lib/drone
+    labels:
+      - "traefik.backend=drone"
+      - "traefik.protocol=http"
+      - "traefik.port=8000"
+      - "traefik.frontend.rule=Host:drone.internal.cloud"
+      - "traefik.docker.network=web-tier"
+    
+  drone-agent:
+    image: drone/drone:0.7
+    command: agent
     networks:
       - ci-tier
-    environment:
-      - POSTGRES_USER=drone
-      - POSTGRES_PASSWORD=drone
     volumes:
-      - "$PWD/drone-database_data:/var/lib/postgresql/data"
-
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DRONE_SERVER=ws://drone-server:8000/ws/broker
+      - DRONE_SECRET=gogsdronecompose
+    labels:
+      - "traefik.enable=false"
 
 networks:
-
-  git-tier:
+  db-tier:
     driver: bridge
-
   ci-tier:
     driver: bridge
-
   web-tier:
     driver: bridge
