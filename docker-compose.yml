@@ -4,6 +4,7 @@ services:
     image: traefik
     command: --web --docker --logLevel=DEBUG
     networks:
+      - net-gateway
       - web-tier
     ports:
       - "80:80"
@@ -54,7 +55,7 @@ services:
       - DRONE_OPEN=true
       - DRONE_HOST=http://drone.internal.cloud
       - DRONE_GOGS=true
-      - DRONE_GOGS_URL=http://gogs
+      - DRONE_GOGS_URL=http://gogs:3000
       - DEBUG=true
     volumes:
       - /var/lib/drone
@@ -79,9 +80,15 @@ services:
       - "traefik.enable=false"
 
 networks:
-  db-tier:
-    driver: bridge
-  ci-tier:
-    driver: bridge
+  net-gateway:
+    external:
+      name: net-gateway
   web-tier:
-    driver: bridge
+    external:
+      name: web-tier
+  db-tier:
+    external:
+      name: db-tier
+  ci-tier:
+    external:
+      name: ci-tier
