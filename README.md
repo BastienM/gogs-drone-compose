@@ -7,8 +7,8 @@ Add **gogs** and **drone** to your ```/etc/hosts```
 
 ```
 # /etc/hosts
-127.0.0.1    gogs
-127.0.0.1    drone
+127.0.0.1    gogs.internal.cloud
+127.0.0.1    drone.internal.cloud
 
 ...
 ```
@@ -21,16 +21,16 @@ $ docker-compose up
 
 ### gogs settings
 
-Go to ```http://gogs:3000``` to procede to the install.
+Go to ```http://gogs.internal.cloud``` to procede to the install.
 * Choose Postgres
-    * host : ```gogs-database:5432```
+    * host : ```gogs-db:5432```
     * username & password : ```gogs```
-* Change ```localhost``` to ```gogs``` whenever asked
+* Change ```localhost``` to ```gogs.internal.cloud``` whenever asked
 * Create an admin user with the credentials of your choice
 
 ### drone settings
 
-Go to ```http://drone:8000```, click the login button and enter your gogs's credentials (created above).
+Go to ```http://drone.internal.cloud```, click the login button and enter your gogs's credentials (created above).
 Nothing more to do here.
 
 ### Testing
@@ -42,4 +42,3 @@ Nothing more to do here.
 * Commit some work and a ```.drone.yml``` file containing a simple workflow (eg. pulling a docker image)
 * Waiting for gogs's hook to hit drone
 * Watch and enjoy
-
