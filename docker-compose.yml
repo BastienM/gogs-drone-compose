@@ -49,6 +49,7 @@ services:
     container_name: gogs
     depends_on:
       - registrator
+      - gogs-database
     network_mode: host
     ports:
       - "3000:3000"
@@ -80,9 +81,10 @@ services:
 
   drone-server:
     image: drone/drone:0.7
-    container_name: drone
+    container_name: drone-server
     depends_on:
       - registrator
+      - drone-database
     network_mode: host
     ports:
       - "8000:8000"
@@ -95,12 +97,32 @@ services:
       - DRONE_HOST=http://drone.service.consul
       - DRONE_GOGS=true
       - DRONE_GOGS_URL=http://gogs.service.consul
+      - DRONE_DATABASE_DRIVER=mysql
+      - DRONE_DATABASE_DATASOURCE=root:drone@tcp(drone-database.service.consul:3306)/drone?parseTime=true
       - DEBUG=true
     volumes:
       - /var/lib/drone
     labels:
       SERVICE_TAGS: "traefik.frontend.rule=Host:drone.service.consul"
-    
+
+  drone-database:
+    image: mysql:5.7
+    container_name: drone-database
+    depends_on:
+      - registrator
+    network_mode: host
+    ports:
+      - "3306:3306"
+    environment:
+      - SERVICE_NAME=drone-database
+      - MYSQL_ROOT_PASSWORD=drone
+      - MYSQL_DATABASE=drone
+    dns: "172.17.0.1"
+    volumes:
+      - /var/lib/postgresql/data
+    labels:
+      SERVICE_TAGS: "traefik.frontend.rule=Host:drone-database.service.consul"
+
   drone-agent:
     image: drone/drone:0.7
     container_name: drone-agent
