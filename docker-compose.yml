@@ -1,92 +1,119 @@
 version: '2'
 services:
+  consul:
+    image: consul:latest
+    container_name: consul
+    network_mode: host
+    environment:
+      CONSUL_BIND_INTERFACE: "wlp4s0"
+      CONSUL_LOCAL_CONFIG: "{\"ports\": {\"dns\": 53}, \"recursors\": [\"8.8.8.8\"]}"
+      CONSUL_ALLOW_PRIVILEGED_PORTS: "true"
+    labels:
+      SERVICE_IGNORE: "true"
+
+  registrator:
+    image: gliderlabs/registrator:latest
+    container_name: registrator
+    privileged: true
+    network_mode: host
+    depends_on:
+      - consul
+    command: consul://localhost:8500
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+  
+  #dns:
+  #  image: andyshinn/dnsmasq:latest
+  #  container_name: dnsmasq
+  #  command: -S /consul/127.0.0.1#8600
+  #  network_mode: host
+  #  cap_add:  
+  #    - NET_ADMIN
+  
   proxy:
     image: traefik
-    command: --web --docker --logLevel=DEBUG
-    networks:
-      - net-gateway
-      - web-tier
-    ports:
-      - "80:80"
-      - "8080:8080"
+    container_name: proxy
+    command: --web --consul --consul.endpoint=localhost:8500 --consulcatalog.endpoint=localhost:8500  --logLevel=DEBUG
+    network_mode: host
+    depends_on:
+      - consul
+    dns: "172.17.0.1"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /dev/null:/traefik.toml
+    labels:
+      SERVICE_IGNORE: "true"
 
   gogs:
     image: gogs/gogs:0.11.19
     container_name: gogs
-    networks:
-      - db-tier
-      - web-tier
-      - ci-tier
+    depends_on:
+      - registrator
+    network_mode: host
+    ports:
+      - "3000:3000"
+    environment:
+      - SERVICE_NAME=gogs
+    dns: "172.17.0.1"
     volumes:
       - /data"
     labels:
-      - "traefik.frontend.rule=Host:gogs.internal.cloud"
-      - "traefik.backend=gogs"
-      - "traefik.web.protocol=http"
-      - "traefik.web.port=3000"
-      - "traefik.docker.network=web-tier"
+      SERVICE_TAGS: "traefik.frontend.rule=Host:gogs.service.consul"
 
-  gogs-db:
+  gogs-database:
     image: postgres:9.1
     container_name: gogs-database
-    networks:
-      - db-tier
+    depends_on:
+      - registrator
+    network_mode: host
+    ports:
+      - "5432:5432"
     environment:
+      - SERVICE_NAME=gogs-database
       - POSTGRES_USER=gogs
       - POSTGRES_PASSWORD=gogs
+    dns: "172.17.0.1"
     volumes:
       - /var/lib/postgresql/data
     labels:
-      - "traefik.enable=false"
+      SERVICE_TAGS: "traefik.frontend.rule=Host:gogs-database.service.consul"
 
   drone-server:
     image: drone/drone:0.7
     container_name: drone
-    networks:
-      - web-tier
-      - ci-tier
+    depends_on:
+      - registrator
+    network_mode: host
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_NAME=drone
+    dns: "172.17.0.1"
     environment:
       - DRONE_SECRET=gogsdronecompose
       - DRONE_OPEN=true
-      - DRONE_HOST=http://drone.internal.cloud
+      - DRONE_HOST=http://drone.service.consul
       - DRONE_GOGS=true
-      - DRONE_GOGS_URL=http://gogs:3000
+      - DRONE_GOGS_URL=http://gogs.service.consul
       - DEBUG=true
     volumes:
       - /var/lib/drone
     labels:
-      - "traefik.frontend.rule=Host:drone.internal.cloud"
-      - "traefik.backend=drone"
-      - "traefik.web.protocol=http"
-      - "traefik.web.port=8000"
-      - "traefik.docker.network=web-tier"
+      SERVICE_TAGS: "traefik.frontend.rule=Host:drone.service.consul"
     
   drone-agent:
     image: drone/drone:0.7
+    container_name: drone-agent
     command: agent
-    networks:
-      - ci-tier
+    depends_on:
+      - registrator
+      - drone-server
+    dns: "172.17.0.1"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - DRONE_SERVER=ws://drone-server:8000/ws/broker
+      - DRONE_SERVER=ws://drone.service.consul/ws/broker
       - DRONE_SECRET=gogsdronecompose
     labels:
-      - "traefik.enable=false"
+      SERVICE_IGNORE: "true"
 
-networks:
-  net-gateway:
-    external:
-      name: net-gateway
-  web-tier:
-    external:
-      name: web-tier
-  db-tier:
-    external:
-      name: db-tier
-  ci-tier:
-    external:
-      name: ci-tier
